@@ -69,16 +69,25 @@ export function MetaAccountPicker({ clientId, clientName, open, onOpenChange, on
       const { data: session } = await supabase.auth.getSession()
       const token = session.session?.access_token
 
-      const { data, error: fnError } = await supabase.functions.invoke('meta-list-accounts', {
+      const res = await supabase.functions.invoke('meta-list-accounts', {
         body: { access_token: accessToken, business_id: selectedBusiness },
         headers: { Authorization: `Bearer ${token}` },
       })
 
-      if (fnError) throw fnError
-      if (data?.error) throw new Error(data.error)
+      console.log('meta-list-accounts response:', res)
 
-      setAccounts(data.accounts || [])
-      setBusinesses(data.businesses || [])
+      if (res.error) throw res.error
+
+      const responseData = res.data
+      if (responseData?.error) throw new Error(responseData.error)
+
+      const accts = responseData?.accounts || []
+      const biz = responseData?.businesses || []
+
+      console.log('Accounts found:', accts.length, 'Businesses:', biz.length)
+
+      setAccounts(accts)
+      setBusinesses(biz)
       setStep('select')
 
       // Save token for future use
