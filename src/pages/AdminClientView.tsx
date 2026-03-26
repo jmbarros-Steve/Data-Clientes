@@ -8,9 +8,12 @@ import { BudgetBar } from '@/components/dashboard/BudgetBar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   ArrowLeft, DollarSign, Eye, MousePointerClick, Percent, Target, TrendingUp, Loader2, AlertCircle,
-  ChevronRight, ChevronDown,
+  ChevronRight, ChevronDown, Settings2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Budget } from '@/hooks/useBudgets'
@@ -30,11 +33,70 @@ interface MetaAccount {
   access_token: string
 }
 
+interface MetricTarget {
+  id: string
+  meta_account_id: string
+  campaign_id: string
+  metric_key: string
+  target_value: number
+}
+
+// Metric definitions
+const METRICS = [
+  { key: 'spend', label: 'Gasto', prefix: '$', suffix: '', lowerIsBetter: true },
+  { key: 'impressions', label: 'Impresiones', prefix: '', suffix: '', lowerIsBetter: false },
+  { key: 'clicks', label: 'Clicks', prefix: '', suffix: '', lowerIsBetter: false },
+  { key: 'ctr', label: 'CTR', prefix: '', suffix: '%', lowerIsBetter: false },
+  { key: 'cpc', label: 'CPC', prefix: '$', suffix: '', lowerIsBetter: true },
+  { key: 'cpm', label: 'CPM', prefix: '$', suffix: '', lowerIsBetter: true },
+  { key: 'conversions', label: 'Conversiones', prefix: '', suffix: '', lowerIsBetter: false },
+  { key: 'roas', label: 'ROAS', prefix: '', suffix: 'x', lowerIsBetter: false },
+] as const
+
+type MetricKey = typeof METRICS[number]['key']
+
 function getStatusBadge(status: string) {
   const s = status?.toUpperCase()
   if (s === 'ACTIVE') return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Activa</Badge>
   if (s === 'PAUSED') return <Badge variant="secondary">Pausada</Badge>
   return <Badge variant="outline">{status}</Badge>
+}
+
+// Get color comparing actual vs target
+function getTargetColor(actual: number, target: number, lowerIsBetter: boolean): string {
+  if (lowerIsBetter) {
+    if (actual <= target) return 'text-green-600'
+    if (actual <= target * 1.2) return 'text-yellow-600'
+    return 'text-red-600'
+  } else {
+    if (actual >= target) return 'text-green-600'
+    if (actual >= target * 0.8) return 'text-yellow-600'
+    return 'text-red-600'
+  }
+}
+
+function MetricCellValue({ actual, target, prefix, suffix, lowerIsBetter, decimals = 0 }: {
+  actual: number
+  target?: number
+  prefix: string
+  suffix: string
+  lowerIsBetter: boolean
+  decimals?: number
+}) {
+  const formatted = `${prefix}${actual.toLocaleString('es-CL', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}${suffix}`
+  if (!target) return <span>{formatted}</span>
+
+  const color = getTargetColor(actual, target, lowerIsBetter)
+  const targetFormatted = `${prefix}${target.toLocaleString('es-CL', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}${suffix}`
+
+  return (
+    <div>
+      <span className={color}>{formatted}</span>
+      <div className="text-[10px] text-muted-foreground">
+        meta: {targetFormatted}
+      </div>
+    </div>
+  )
 }
 
 export default function AdminClientView() {
@@ -43,6 +105,7 @@ export default function AdminClientView() {
   const [metaAccounts, setMetaAccounts] = useState<MetaAccount[]>([])
   const [campaigns, setCampaigns] = useState<CampaignInsight[]>([])
   const [budgets, setBudgets] = useState<Budget[]>([])
+  const [metricTargets, setMetricTargets] = useState<MetricTarget[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -57,6 +120,14 @@ export default function AdminClientView() {
   // Track which meta_account_id each campaign belongs to
   const [campaignAccountMap, setCampaignAccountMap] = useState<Record<string, string>>({})
   const [showAllCampaigns, setShowAllCampaigns] = useState(false)
+
+  // Target editor dialog
+  const [targetDialogOpen, setTargetDialogOpen] = useState(false)
+  const [targetCampaign, setTargetCampaign] = useState<CampaignInsight | null>(null)
+  const [targetForm, setTargetForm] = useState<Record<MetricKey, string>>({
+    spend: '', impressions: '', clicks: '', ctr: '', cpc: '', cpm: '', conversions: '', roas: '',
+  })
+  const [savingTargets, setSavingTargets] = useState(false)
 
   useEffect(() => {
     if (!clientId) return
@@ -93,14 +164,16 @@ export default function AdminClientView() {
         return
       }
 
-      // Load budgets
       const accountIds = accounts.map(a => a.meta_account_id)
-      const { data: budgetData } = await supabase
-        .from('campaign_budgets')
-        .select('*')
-        .in('meta_account_id', accountIds)
+
+      // Load budgets + metric targets in parallel
+      const [{ data: budgetData }, { data: targetsData }] = await Promise.all([
+        supabase.from('campaign_budgets').select('*').in('meta_account_id', accountIds),
+        supabase.from('campaign_metric_targets').select('*').in('meta_account_id', accountIds),
+      ])
 
       setBudgets(budgetData ?? [])
+      setMetricTargets(targetsData ?? [])
 
       // Fetch campaigns for each account
       const allCampaigns: CampaignInsight[] = []
@@ -127,6 +200,67 @@ export default function AdminClientView() {
     }
   }
 
+  function getTarget(campaignId: string, metricKey: string): number | undefined {
+    const t = metricTargets.find(mt => mt.campaign_id === campaignId && mt.metric_key === metricKey)
+    return t ? Number(t.target_value) : undefined
+  }
+
+  function openTargetEditor(campaign: CampaignInsight, e: React.MouseEvent) {
+    e.stopPropagation()
+    setTargetCampaign(campaign)
+    const form: Record<string, string> = {}
+    for (const m of METRICS) {
+      const t = getTarget(campaign.campaign_id, m.key)
+      form[m.key] = t !== undefined ? String(t) : ''
+    }
+    setTargetForm(form as Record<MetricKey, string>)
+    setTargetDialogOpen(true)
+  }
+
+  async function saveTargets() {
+    if (!targetCampaign) return
+    const accountId = campaignAccountMap[targetCampaign.campaign_id]
+    if (!accountId) return
+
+    setSavingTargets(true)
+    try {
+      // Upsert each metric that has a value, delete those that are empty
+      for (const m of METRICS) {
+        const val = targetForm[m.key]
+        if (val && Number(val) > 0) {
+          await supabase.from('campaign_metric_targets').upsert({
+            meta_account_id: accountId,
+            campaign_id: targetCampaign.campaign_id,
+            metric_key: m.key,
+            target_value: Number(val),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'meta_account_id,campaign_id,metric_key' })
+        } else {
+          // Remove target if cleared
+          await supabase.from('campaign_metric_targets')
+            .delete()
+            .eq('meta_account_id', accountId)
+            .eq('campaign_id', targetCampaign.campaign_id)
+            .eq('metric_key', m.key)
+        }
+      }
+
+      // Reload targets
+      const accountIds = metaAccounts.map(a => a.meta_account_id)
+      const { data: targetsData } = await supabase
+        .from('campaign_metric_targets')
+        .select('*')
+        .in('meta_account_id', accountIds)
+      setMetricTargets(targetsData ?? [])
+
+      setTargetDialogOpen(false)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error guardando targets')
+    } finally {
+      setSavingTargets(false)
+    }
+  }
+
   async function toggleCampaign(campaignId: string) {
     if (expandedCampaign === campaignId) {
       setExpandedCampaign(null)
@@ -136,7 +270,7 @@ export default function AdminClientView() {
     setExpandedCampaign(campaignId)
     setExpandedAdSet(null)
 
-    if (adSets[campaignId]) return // already loaded
+    if (adSets[campaignId]) return
 
     const accountId = campaignAccountMap[campaignId]
     if (!accountId) return
@@ -269,7 +403,7 @@ export default function AdminClientView() {
               <MetricCard title="ROAS" value={`${roas.toFixed(2)}x`} icon={<TrendingUp className="h-4 w-4" />} />
             </div>
 
-            {/* Campaigns table with expandable ad sets */}
+            {/* Campaigns table */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Campañas ({campaigns.length})</CardTitle>
@@ -290,11 +424,11 @@ export default function AdminClientView() {
                         <TableHead className="text-right">CPM</TableHead>
                         <TableHead className="text-right">Conv.</TableHead>
                         <TableHead className="text-right">ROAS</TableHead>
+                        <TableHead className="w-10"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {(showAllCampaigns ? campaigns : campaigns.slice(0, 5)).map(campaign => {
-                        const budget = budgets.find(b => b.campaign_id === campaign.campaign_id && !b.adset_id)
                         const isExpanded = expandedCampaign === campaign.campaign_id
                         const campaignAdSets = adSets[campaign.campaign_id] || []
 
@@ -302,7 +436,6 @@ export default function AdminClientView() {
                           <CampaignRows
                             key={campaign.campaign_id}
                             campaign={campaign}
-                            budget={budget}
                             isExpanded={isExpanded}
                             onToggle={() => toggleCampaign(campaign.campaign_id)}
                             loadingAdSets={loadingAdSets === campaign.campaign_id}
@@ -311,13 +444,14 @@ export default function AdminClientView() {
                             onToggleAdSet={toggleAdSet}
                             loadingAds={loadingAds}
                             ads={ads}
-                            budgets={budgets}
+                            getTarget={(key) => getTarget(campaign.campaign_id, key)}
+                            onEditTargets={(e) => openTargetEditor(campaign, e)}
                           />
                         )
                       })}
                       {campaigns.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                             No se encontraron campañas
                           </TableCell>
                         </TableRow>
@@ -341,17 +475,62 @@ export default function AdminClientView() {
           </>
         )}
       </div>
+
+      {/* Target Editor Dialog */}
+      <Dialog open={targetDialogOpen} onOpenChange={setTargetDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Metas de Métricas</DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              {targetCampaign?.campaign_name || 'Campaña'}
+            </p>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Define las metas para cada métrica. Deja vacío si no aplica. Los valores se compararán con el rendimiento real (verde = cumple, rojo = no cumple).
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {METRICS.map(m => (
+                <div key={m.key} className="space-y-1">
+                  <Label className="text-xs">
+                    {m.label}
+                    <span className="text-muted-foreground ml-1">
+                      ({m.lowerIsBetter ? 'menor es mejor' : 'mayor es mejor'})
+                    </span>
+                  </Label>
+                  <div className="relative">
+                    {m.prefix && <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{m.prefix}</span>}
+                    <Input
+                      type="number"
+                      step="any"
+                      placeholder="—"
+                      className={m.prefix ? 'pl-6' : ''}
+                      value={targetForm[m.key]}
+                      onChange={e => setTargetForm(prev => ({ ...prev, [m.key]: e.target.value }))}
+                    />
+                    {m.suffix && <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{m.suffix}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button onClick={saveTargets} disabled={savingTargets} className="w-full">
+              {savingTargets && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+              Guardar Metas
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   )
 }
 
-// Extracted component to avoid fragments-in-map issues
+// Campaign rows component
 function CampaignRows({
-  campaign, budget, isExpanded, onToggle, loadingAdSets,
-  campaignAdSets, expandedAdSet, onToggleAdSet, loadingAds, ads, budgets,
+  campaign, isExpanded, onToggle, loadingAdSets,
+  campaignAdSets, expandedAdSet, onToggleAdSet, loadingAds, ads,
+  getTarget, onEditTargets,
 }: {
   campaign: CampaignInsight
-  budget: Budget | undefined
   isExpanded: boolean
   onToggle: () => void
   loadingAdSets: boolean
@@ -360,11 +539,11 @@ function CampaignRows({
   onToggleAdSet: (id: string) => void
   loadingAds: string | null
   ads: Record<string, AdInsight[]>
-  budgets: Budget[]
+  getTarget: (key: string) => number | undefined
+  onEditTargets: (e: React.MouseEvent) => void
 }) {
   return (
     <>
-      {/* Campaign row */}
       <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onToggle}>
         <TableCell className="w-8 pr-0">
           {isExpanded ? (
@@ -378,16 +557,34 @@ function CampaignRows({
         </TableCell>
         <TableCell>{getStatusBadge(campaign.status)}</TableCell>
         <TableCell className="text-right">
-          <div className="font-medium">${campaign.spend?.toLocaleString('es-CL', { minimumFractionDigits: 0 })}</div>
-          {budget && <BudgetBar spent={campaign.spend} budget={budget.budget_amount} compact />}
+          <MetricCellValue actual={campaign.spend || 0} target={getTarget('spend')} prefix="$" suffix="" lowerIsBetter={true} />
         </TableCell>
-        <TableCell className="text-right">{campaign.impressions?.toLocaleString()}</TableCell>
-        <TableCell className="text-right">{campaign.clicks?.toLocaleString()}</TableCell>
-        <TableCell className="text-right">{campaign.ctr?.toFixed(2)}%</TableCell>
-        <TableCell className="text-right">${campaign.cpc?.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</TableCell>
-        <TableCell className="text-right">${campaign.cpm?.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</TableCell>
-        <TableCell className="text-right">{campaign.conversions?.toLocaleString()}</TableCell>
-        <TableCell className="text-right font-medium">{campaign.roas?.toFixed(2)}x</TableCell>
+        <TableCell className="text-right">
+          <MetricCellValue actual={campaign.impressions || 0} target={getTarget('impressions')} prefix="" suffix="" lowerIsBetter={false} />
+        </TableCell>
+        <TableCell className="text-right">
+          <MetricCellValue actual={campaign.clicks || 0} target={getTarget('clicks')} prefix="" suffix="" lowerIsBetter={false} />
+        </TableCell>
+        <TableCell className="text-right">
+          <MetricCellValue actual={campaign.ctr || 0} target={getTarget('ctr')} prefix="" suffix="%" lowerIsBetter={false} decimals={2} />
+        </TableCell>
+        <TableCell className="text-right">
+          <MetricCellValue actual={campaign.cpc || 0} target={getTarget('cpc')} prefix="$" suffix="" lowerIsBetter={true} />
+        </TableCell>
+        <TableCell className="text-right">
+          <MetricCellValue actual={campaign.cpm || 0} target={getTarget('cpm')} prefix="$" suffix="" lowerIsBetter={true} />
+        </TableCell>
+        <TableCell className="text-right">
+          <MetricCellValue actual={campaign.conversions || 0} target={getTarget('conversions')} prefix="" suffix="" lowerIsBetter={false} />
+        </TableCell>
+        <TableCell className="text-right">
+          <MetricCellValue actual={campaign.roas || 0} target={getTarget('roas')} prefix="" suffix="x" lowerIsBetter={false} decimals={2} />
+        </TableCell>
+        <TableCell className="w-10">
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEditTargets} title="Configurar metas">
+            <Settings2 className="h-3.5 w-3.5" />
+          </Button>
+        </TableCell>
       </TableRow>
 
       {/* Expanded ad sets */}
@@ -395,7 +592,7 @@ function CampaignRows({
         <>
           {loadingAdSets ? (
             <TableRow>
-              <TableCell colSpan={11} className="bg-muted/20">
+              <TableCell colSpan={12} className="bg-muted/20">
                 <div className="flex items-center justify-center py-4 gap-2">
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
                   <span className="text-sm text-muted-foreground">Cargando conjuntos de anuncios...</span>
@@ -404,13 +601,12 @@ function CampaignRows({
             </TableRow>
           ) : campaignAdSets.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={11} className="bg-muted/20 text-center text-sm text-muted-foreground py-4">
+              <TableCell colSpan={12} className="bg-muted/20 text-center text-sm text-muted-foreground py-4">
                 Sin conjuntos de anuncios
               </TableCell>
             </TableRow>
           ) : (
             campaignAdSets.map(adset => {
-              const adsetBudget = budgets.find(b => b.adset_id === adset.adset_id)
               const isAdSetExpanded = expandedAdSet === adset.adset_id
               const adsetAds = ads[adset.adset_id] || []
 
@@ -418,7 +614,6 @@ function CampaignRows({
                 <AdSetRows
                   key={adset.adset_id}
                   adset={adset}
-                  adsetBudget={adsetBudget}
                   isExpanded={isAdSetExpanded}
                   onToggle={() => onToggleAdSet(adset.adset_id)}
                   loadingAds={loadingAds === adset.adset_id}
@@ -434,10 +629,9 @@ function CampaignRows({
 }
 
 function AdSetRows({
-  adset, adsetBudget, isExpanded, onToggle, loadingAds, adsetAds,
+  adset, isExpanded, onToggle, loadingAds, adsetAds,
 }: {
   adset: AdSetInsight
-  adsetBudget: Budget | undefined
   isExpanded: boolean
   onToggle: () => void
   loadingAds: boolean
@@ -445,7 +639,6 @@ function AdSetRows({
 }) {
   return (
     <>
-      {/* Ad set row */}
       <TableRow
         className="cursor-pointer hover:bg-blue-50/50 bg-muted/20"
         onClick={onToggle}
@@ -466,10 +659,7 @@ function AdSetRows({
             {adset.status === 'ACTIVE' ? 'Activo' : adset.status}
           </Badge>
         </TableCell>
-        <TableCell className="text-right text-sm">
-          <div>${adset.spend?.toLocaleString('es-CL')}</div>
-          {adsetBudget && <BudgetBar spent={adset.spend} budget={adsetBudget.budget_amount} compact />}
-        </TableCell>
+        <TableCell className="text-right text-sm">${adset.spend?.toLocaleString('es-CL')}</TableCell>
         <TableCell className="text-right text-sm">{adset.impressions?.toLocaleString()}</TableCell>
         <TableCell className="text-right text-sm">{adset.clicks?.toLocaleString()}</TableCell>
         <TableCell className="text-right text-sm">{adset.ctr?.toFixed(2)}%</TableCell>
@@ -477,6 +667,7 @@ function AdSetRows({
         <TableCell className="text-right text-sm">—</TableCell>
         <TableCell className="text-right text-sm">{adset.conversions}</TableCell>
         <TableCell className="text-right text-sm">{adset.roas?.toFixed(2)}x</TableCell>
+        <TableCell />
       </TableRow>
 
       {/* Expanded ads */}
@@ -484,7 +675,7 @@ function AdSetRows({
         <>
           {loadingAds ? (
             <TableRow>
-              <TableCell colSpan={11} className="bg-muted/10">
+              <TableCell colSpan={12} className="bg-muted/10">
                 <div className="flex items-center justify-center py-3 gap-2">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
                   <span className="text-xs text-muted-foreground">Cargando anuncios...</span>
@@ -493,7 +684,7 @@ function AdSetRows({
             </TableRow>
           ) : adsetAds.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={11} className="bg-muted/10 text-center text-xs text-muted-foreground py-3">
+              <TableCell colSpan={12} className="bg-muted/10 text-center text-xs text-muted-foreground py-3">
                 Sin anuncios
               </TableCell>
             </TableRow>
@@ -522,6 +713,7 @@ function AdSetRows({
                 <TableCell className="text-right text-xs">${ad.cpc?.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</TableCell>
                 <TableCell className="text-right text-xs">—</TableCell>
                 <TableCell className="text-right text-xs">{ad.conversions}</TableCell>
+                <TableCell />
                 <TableCell />
               </TableRow>
             ))
