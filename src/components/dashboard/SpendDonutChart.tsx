@@ -39,7 +39,7 @@ export function SpendDonutChart({ campaigns }: SpendDonutChartProps) {
               <Pie data={chartData} cx="50%" cy="50%" innerRadius={65} outerRadius={100} paddingAngle={2} dataKey="value" stroke="none">
                 {chartData.map((_, i) => <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />)}
               </Pie>
-              <Tooltip formatter={(value: number) => [fmt(value), 'Gasto']} contentStyle={TOOLTIP_STYLE} />
+              <Tooltip formatter={(value) => [fmt(Number(value)), 'Gasto']} contentStyle={TOOLTIP_STYLE} />
             </PieChart>
           </ResponsiveContainer>
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

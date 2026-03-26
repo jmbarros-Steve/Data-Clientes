@@ -16,10 +16,9 @@ export function useMetricTargets(metaAccountId: string | null) {
       .from('campaign_metric_targets')
       .select('metric_key, target_value')
       .eq('meta_account_id', metaAccountId)
-      .then(({ data }) => {
-        if (data) setTargets(data as MetricTarget[])
+      .then(({ data, error }) => {
+        if (!error && data) setTargets(data as MetricTarget[])
       })
-      .catch(() => { /* targets table may not exist yet */ })
   }, [metaAccountId])
 
   const targetMap = useMemo(() => {

@@ -11,7 +11,7 @@ import { BudgetBar } from '@/components/dashboard/BudgetBar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, DollarSign, MousePointerClick, Target, TrendingUp, Loader2, Layers, Percent } from 'lucide-react'
+import { ArrowLeft, DollarSign, MousePointerClick, Target, TrendingUp, Loader2, Layers } from 'lucide-react'
 
 export default function CampaignDetail() {
   const { id: campaignId } = useParams<{ id: string }>()

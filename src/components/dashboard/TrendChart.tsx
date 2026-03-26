@@ -42,7 +42,7 @@ export function TrendChart({ title, data, color = '#1E3A7B', valuePrefix = '', v
               />
               <Tooltip
                 contentStyle={TOOLTIP_STYLE}
-                formatter={(v: number) => [`${valuePrefix}${Number(v).toLocaleString()}${valueSuffix}`, title]}
+                formatter={(v) => [`${valuePrefix}${Number(v).toLocaleString()}${valueSuffix}`, title]}
               />
               {targetValue && (
                 <ReferenceLine

@@ -33,7 +33,7 @@ export function TopCampaignsBarChart({ campaigns }: TopCampaignsBarChartProps) {
             <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmt} />
               <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(value: number) => [fmt(value), 'Gasto']} contentStyle={TOOLTIP_STYLE} />
+              <Tooltip formatter={(value) => [fmt(Number(value)), 'Gasto']} contentStyle={TOOLTIP_STYLE} />
               <Bar dataKey="spend" radius={[0, 6, 6, 0]} barSize={28}>
                 {chartData.map((_, i) => <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />)}
               </Bar>
