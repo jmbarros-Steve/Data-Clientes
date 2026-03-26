@@ -1,19 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { fetchCampaigns, fetchAdSets, fetchAds, type CampaignInsight, type AdSetInsight, type AdInsight } from '@/lib/meta-api'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { MetricCard } from '@/components/dashboard/MetricCard'
 import { BudgetBar } from '@/components/dashboard/BudgetBar'
+import { SpendDonutChart } from '@/components/dashboard/SpendDonutChart'
+import { TopCampaignsBarChart } from '@/components/dashboard/TopCampaignsBarChart'
+import { TrendChart } from '@/components/dashboard/TrendChart'
+import { DatePresetSelector } from '@/components/dashboard/DatePresetSelector'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { DATE_PRESETS, type MetricKey } from '@/lib/metric-utils'
 import {
   ArrowLeft, DollarSign, Eye, MousePointerClick, Percent, Target, TrendingUp, Loader2, AlertCircle,
-  ChevronRight, ChevronDown, Settings2,
+  ChevronRight, ChevronDown, Settings2, Layers,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Budget } from '@/hooks/useBudgets'
@@ -41,7 +46,6 @@ interface MetricTarget {
   target_value: number
 }
 
-// Metric definitions
 const METRICS = [
   { key: 'spend', label: 'Gasto', prefix: '$', suffix: '', lowerIsBetter: true },
   { key: 'impressions', label: 'Impresiones', prefix: '', suffix: '', lowerIsBetter: false },
@@ -53,7 +57,7 @@ const METRICS = [
   { key: 'roas', label: 'ROAS', prefix: '', suffix: 'x', lowerIsBetter: false },
 ] as const
 
-type MetricKey = typeof METRICS[number]['key']
+type LocalMetricKey = typeof METRICS[number]['key']
 
 function getStatusBadge(status: string) {
   const s = status?.toUpperCase()
@@ -62,7 +66,6 @@ function getStatusBadge(status: string) {
   return <Badge variant="outline">{status}</Badge>
 }
 
-// Get color comparing actual vs target
 function getTargetColor(actual: number, target: number, lowerIsBetter: boolean): string {
   if (lowerIsBetter) {
     if (actual <= target) return 'text-green-600'
@@ -108,6 +111,7 @@ export default function AdminClientView() {
   const [metricTargets, setMetricTargets] = useState<MetricTarget[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [datePreset, setDatePreset] = useState('30d')
 
   // Expandable state
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null)
@@ -117,17 +121,40 @@ export default function AdminClientView() {
   const [loadingAdSets, setLoadingAdSets] = useState<string | null>(null)
   const [loadingAds, setLoadingAds] = useState<string | null>(null)
 
-  // Track which meta_account_id each campaign belongs to
   const [campaignAccountMap, setCampaignAccountMap] = useState<Record<string, string>>({})
   const [showAllCampaigns, setShowAllCampaigns] = useState(false)
 
   // Target editor dialog
   const [targetDialogOpen, setTargetDialogOpen] = useState(false)
   const [targetCampaign, setTargetCampaign] = useState<CampaignInsight | null>(null)
-  const [targetForm, setTargetForm] = useState<Record<MetricKey, string>>({
+  const [targetForm, setTargetForm] = useState<Record<LocalMetricKey, string>>({
     spend: '', impressions: '', clicks: '', ctr: '', cpc: '', cpm: '', conversions: '', roas: '',
   })
   const [savingTargets, setSavingTargets] = useState(false)
+
+  // Store accounts ref for reloading
+  const [accountIds, setAccountIds] = useState<string[]>([])
+
+  const loadCampaignData = useCallback(async (accounts: MetaAccount[], preset: string) => {
+    const metaPreset = DATE_PRESETS.find(p => p.key === preset)?.metaPreset || 'last_30d'
+    const allCampaigns: CampaignInsight[] = []
+    const accountMap: Record<string, string> = {}
+
+    for (const account of accounts) {
+      try {
+        const data = await fetchCampaigns(account.meta_account_id, metaPreset)
+        for (const c of data) {
+          accountMap[c.campaign_id] = account.meta_account_id
+        }
+        allCampaigns.push(...data)
+      } catch (err) {
+        console.error(`Error fetching campaigns for ${account.meta_account_id}:`, err)
+      }
+    }
+
+    setCampaigns(allCampaigns)
+    setCampaignAccountMap(accountMap)
+  }, [])
 
   useEffect(() => {
     if (!clientId) return
@@ -164,35 +191,18 @@ export default function AdminClientView() {
         return
       }
 
-      const accountIds = accounts.map(a => a.meta_account_id)
+      const ids = accounts.map(a => a.meta_account_id)
+      setAccountIds(ids)
 
-      // Load budgets + metric targets in parallel
       const [{ data: budgetData }, { data: targetsData }] = await Promise.all([
-        supabase.from('campaign_budgets').select('*').in('meta_account_id', accountIds),
-        supabase.from('campaign_metric_targets').select('*').in('meta_account_id', accountIds),
+        supabase.from('campaign_budgets').select('*').in('meta_account_id', ids),
+        supabase.from('campaign_metric_targets').select('*').in('meta_account_id', ids),
       ])
 
       setBudgets(budgetData ?? [])
       setMetricTargets(targetsData ?? [])
 
-      // Fetch campaigns for each account
-      const allCampaigns: CampaignInsight[] = []
-      const accountMap: Record<string, string> = {}
-
-      for (const account of accounts) {
-        try {
-          const data = await fetchCampaigns(account.meta_account_id)
-          for (const c of data) {
-            accountMap[c.campaign_id] = account.meta_account_id
-          }
-          allCampaigns.push(...data)
-        } catch (err) {
-          console.error(`Error fetching campaigns for ${account.meta_account_id}:`, err)
-        }
-      }
-
-      setCampaigns(allCampaigns)
-      setCampaignAccountMap(accountMap)
+      await loadCampaignData(accounts, datePreset)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error cargando datos')
     } finally {
@@ -200,9 +210,26 @@ export default function AdminClientView() {
     }
   }
 
+  // Reload campaigns when date preset changes
+  async function handleDatePresetChange(preset: string) {
+    setDatePreset(preset)
+    if (metaAccounts.length > 0) {
+      setLoading(true)
+      await loadCampaignData(metaAccounts, preset)
+      setLoading(false)
+    }
+  }
+
   function getTarget(campaignId: string, metricKey: string): number | undefined {
     const t = metricTargets.find(mt => mt.campaign_id === campaignId && mt.metric_key === metricKey)
     return t ? Number(t.target_value) : undefined
+  }
+
+  // Aggregate targets across all campaigns (for the summary MetricCards)
+  function getAggregateTarget(metricKey: MetricKey): number | undefined {
+    const targets = metricTargets.filter(mt => mt.metric_key === metricKey)
+    if (targets.length === 0) return undefined
+    return targets.reduce((sum, t) => sum + Number(t.target_value), 0)
   }
 
   function openTargetEditor(campaign: CampaignInsight, e: React.MouseEvent) {
@@ -213,7 +240,7 @@ export default function AdminClientView() {
       const t = getTarget(campaign.campaign_id, m.key)
       form[m.key] = t !== undefined ? String(t) : ''
     }
-    setTargetForm(form as Record<MetricKey, string>)
+    setTargetForm(form as Record<LocalMetricKey, string>)
     setTargetDialogOpen(true)
   }
 
@@ -224,7 +251,6 @@ export default function AdminClientView() {
 
     setSavingTargets(true)
     try {
-      // Upsert each metric that has a value, delete those that are empty
       for (const m of METRICS) {
         const val = targetForm[m.key]
         if (val && Number(val) > 0) {
@@ -236,7 +262,6 @@ export default function AdminClientView() {
             updated_at: new Date().toISOString(),
           }, { onConflict: 'meta_account_id,campaign_id,metric_key' })
         } else {
-          // Remove target if cleared
           await supabase.from('campaign_metric_targets')
             .delete()
             .eq('meta_account_id', accountId)
@@ -245,8 +270,6 @@ export default function AdminClientView() {
         }
       }
 
-      // Reload targets
-      const accountIds = metaAccounts.map(a => a.meta_account_id)
       const { data: targetsData } = await supabase
         .from('campaign_metric_targets')
         .select('*')
@@ -327,6 +350,15 @@ export default function AdminClientView() {
 
   const accountBudget = budgets.find(b => !b.campaign_id && !b.adset_id)
 
+  // Trend data for chart
+  const trendData = campaigns
+    .filter(c => c.date_start)
+    .map(c => ({
+      date: new Date(c.date_start).toLocaleDateString('es-CL', { day: '2-digit', month: 'short' }),
+      value: c.spend || 0,
+    }))
+    .slice(0, 30)
+
   if (loading) {
     return (
       <AdminLayout>
@@ -341,8 +373,8 @@ export default function AdminClientView() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        {/* Back + Header */}
-        <div className="flex items-center justify-between">
+        {/* Back + Header + Date Preset */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <Link to="/admin">
               <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
@@ -361,7 +393,10 @@ export default function AdminClientView() {
               </p>
             </div>
           </div>
-          <Badge variant="outline">{metaAccounts.length} cuenta{metaAccounts.length !== 1 ? 's' : ''} Meta</Badge>
+          <div className="flex items-center gap-3">
+            <Badge variant="outline">{metaAccounts.length} cuenta{metaAccounts.length !== 1 ? 's' : ''} Meta</Badge>
+            <DatePresetSelector value={datePreset} onChange={handleDatePresetChange} />
+          </div>
         </div>
 
         {error && (
@@ -391,19 +426,97 @@ export default function AdminClientView() {
               </Card>
             )}
 
-            {/* Metrics */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-              <MetricCard title="Gasto Total" value={`$${totals.spend.toLocaleString('es-CL', { minimumFractionDigits: 0 })}`} icon={<DollarSign className="h-4 w-4" />} />
-              <MetricCard title="Impresiones" value={totals.impressions.toLocaleString()} icon={<Eye className="h-4 w-4" />} />
-              <MetricCard title="Clicks" value={totals.clicks.toLocaleString()} icon={<MousePointerClick className="h-4 w-4" />} />
-              <MetricCard title="CTR" value={`${ctr.toFixed(2)}%`} icon={<Percent className="h-4 w-4" />} />
-              <MetricCard title="CPC" value={`$${cpc.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`} icon={<MousePointerClick className="h-4 w-4" />} />
-              <MetricCard title="CPM" value={`$${cpm.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`} icon={<Eye className="h-4 w-4" />} />
-              <MetricCard title="Conversiones" value={totals.conversions.toLocaleString()} icon={<Target className="h-4 w-4" />} />
-              <MetricCard title="ROAS" value={`${roas.toFixed(2)}x`} icon={<TrendingUp className="h-4 w-4" />} />
+            {/* 8 Bold Metric Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <MetricCard
+                title="Gasto Total"
+                value={`$${totals.spend.toLocaleString('es-CL', { minimumFractionDigits: 0 })}`}
+                icon={<DollarSign className="h-4 w-4" />}
+                metricKey="spend"
+                tooltipText="Total invertido en anuncios"
+                target={getAggregateTarget('spend')}
+              />
+              <MetricCard
+                title="Impresiones"
+                value={totals.impressions.toLocaleString()}
+                icon={<Eye className="h-4 w-4" />}
+                metricKey="impressions"
+                tooltipText="Veces que se mostraron los anuncios"
+                target={getAggregateTarget('impressions')}
+              />
+              <MetricCard
+                title="Clicks"
+                value={totals.clicks.toLocaleString()}
+                icon={<MousePointerClick className="h-4 w-4" />}
+                metricKey="clicks"
+                tooltipText="Clicks en anuncios"
+                target={getAggregateTarget('clicks')}
+              />
+              <MetricCard
+                title="CTR"
+                value={`${ctr.toFixed(2)}%`}
+                icon={<Percent className="h-4 w-4" />}
+                metricKey="ctr"
+                tooltipText="Porcentaje de personas que hicieron click"
+                target={getAggregateTarget('ctr')}
+              />
+              <MetricCard
+                title="CPC"
+                value={`$${Math.round(cpc).toLocaleString('es-CL')}`}
+                icon={<MousePointerClick className="h-4 w-4" />}
+                metricKey="cpc"
+                tooltipText="Costo promedio por cada click"
+                target={getAggregateTarget('cpc')}
+              />
+              <MetricCard
+                title="CPM"
+                value={`$${Math.round(cpm).toLocaleString('es-CL')}`}
+                icon={<Layers className="h-4 w-4" />}
+                metricKey="cpm"
+                tooltipText="Costo por cada 1.000 impresiones"
+                target={getAggregateTarget('cpm')}
+              />
+              <MetricCard
+                title="Conversiones"
+                value={totals.conversions.toLocaleString()}
+                icon={<Target className="h-4 w-4" />}
+                metricKey="conversions"
+                tooltipText="Acciones valiosas completadas"
+                target={getAggregateTarget('conversions')}
+              />
+              <MetricCard
+                title="ROAS"
+                value={`${roas.toFixed(2)}x`}
+                icon={<TrendingUp className="h-4 w-4" />}
+                metricKey="roas"
+                tooltipText="Retorno por cada $1 invertido"
+                target={getAggregateTarget('roas')}
+              />
             </div>
 
-            {/* Campaigns table */}
+            {/* Donut + Bar Charts side by side */}
+            {campaigns.length > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <SpendDonutChart
+                  campaigns={campaigns.map(c => ({ campaign_name: c.campaign_name, spend: c.spend }))}
+                />
+                <TopCampaignsBarChart
+                  campaigns={campaigns.map(c => ({ campaign_name: c.campaign_name, spend: c.spend }))}
+                />
+              </div>
+            )}
+
+            {/* Trend Area Chart */}
+            {trendData.length > 0 && (
+              <TrendChart
+                title="Tendencia de Gasto"
+                data={trendData}
+                valuePrefix="$"
+                targetValue={getAggregateTarget('spend')}
+              />
+            )}
+
+            {/* Campaigns table with expandable ad sets/ads + target editor */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Campañas ({campaigns.length})</CardTitle>

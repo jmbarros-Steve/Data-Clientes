@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabase'
 import { Users, DollarSign, BookOpen, LogOut, LayoutDashboard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -12,6 +14,17 @@ const adminLinks = [
 export function AdminSidebar() {
   const { signOut } = useAuth()
   const location = useLocation()
+  const [firstClientId, setFirstClientId] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase
+      .from('clients')
+      .select('id')
+      .limit(1)
+      .then(({ data }) => {
+        if (data && data.length > 0) setFirstClientId(data[0].id)
+      })
+  }, [])
 
   return (
     <aside className="w-64 border-r border-border bg-sidebar min-h-screen p-4 flex flex-col">
@@ -39,12 +52,14 @@ export function AdminSidebar() {
 
         <div className="border-t border-border my-4" />
 
-        <Link to="/">
-          <Button variant="ghost" className="w-full justify-start gap-2">
-            <LayoutDashboard className="h-4 w-4" />
-            Ver como cliente
-          </Button>
-        </Link>
+        {firstClientId && (
+          <Link to={`/admin/client/${firstClientId}`}>
+            <Button variant="ghost" className="w-full justify-start gap-2">
+              <LayoutDashboard className="h-4 w-4" />
+              Ver como cliente
+            </Button>
+          </Link>
+        )}
       </nav>
 
       <Button variant="ghost" onClick={signOut} className="justify-start gap-2 mt-auto">
