@@ -16,7 +16,7 @@ export function AdminSidebar() {
   return (
     <aside className="w-64 border-r border-border bg-sidebar min-h-screen p-4 flex flex-col">
       <div className="flex items-center gap-3 mb-8 px-2">
-        <img src="/logo-bg-consult.png" alt="BG Consult Hub" className="h-8 object-contain" />
+        <img src="/logo-bg-consult.png" alt="BG Consult Hub" className="h-8 object-contain rounded bg-white" />
         <span className="font-bold text-sm text-sidebar-foreground">BG Consult Hub</span>
       </div>
 

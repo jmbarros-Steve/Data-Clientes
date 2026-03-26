@@ -33,7 +33,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-4">
-          <img src="/logo-bg-consult.png" alt="BG Consult Hub" className="mx-auto h-20 object-contain" />
+          <img src="/logo-bg-consult.png" alt="BG Consult Hub" className="mx-auto h-20 object-contain rounded-lg bg-white p-2" />
           <CardTitle className="text-2xl">BG Consult Hub</CardTitle>
           <p className="text-muted-foreground text-sm">
             Accede a tu dashboard de campañas

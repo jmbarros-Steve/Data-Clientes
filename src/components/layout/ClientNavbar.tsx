@@ -24,7 +24,7 @@ export function ClientNavbar() {
             {clientData?.logo_url ? (
               <img src={clientData.logo_url} alt="Logo" className="h-8 w-8 rounded object-cover" />
             ) : (
-              <img src="/logo-bg-consult.png" alt="BG Consult Hub" className="h-8 object-contain" />
+              <img src="/logo-bg-consult.png" alt="BG Consult Hub" className="h-8 object-contain rounded bg-white" />
             )}
             <span className="font-semibold text-foreground hidden sm:block">
               {clientData?.company ?? clientData?.name ?? 'BG Consult Hub'}
