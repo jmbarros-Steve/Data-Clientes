@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { fetchCampaigns, type CampaignInsight } from '@/lib/meta-api'
+import { fetchCampaigns, fetchAdSets, fetchAds, type CampaignInsight, type AdSetInsight, type AdInsight } from '@/lib/meta-api'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { MetricCard } from '@/components/dashboard/MetricCard'
 import { BudgetBar } from '@/components/dashboard/BudgetBar'
-import { CampaignTable } from '@/components/campaigns/CampaignTable'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import {
   ArrowLeft, DollarSign, Eye, MousePointerClick, Percent, Target, TrendingUp, Loader2, AlertCircle,
+  ChevronRight, ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Budget } from '@/hooks/useBudgets'
@@ -29,6 +30,13 @@ interface MetaAccount {
   access_token: string
 }
 
+function getStatusBadge(status: string) {
+  const s = status?.toUpperCase()
+  if (s === 'ACTIVE') return <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Activa</Badge>
+  if (s === 'PAUSED') return <Badge variant="secondary">Pausada</Badge>
+  return <Badge variant="outline">{status}</Badge>
+}
+
 export default function AdminClientView() {
   const { clientId } = useParams<{ clientId: string }>()
   const [client, setClient] = useState<Client | null>(null)
@@ -37,6 +45,17 @@ export default function AdminClientView() {
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Expandable state
+  const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null)
+  const [adSets, setAdSets] = useState<Record<string, AdSetInsight[]>>({})
+  const [ads, setAds] = useState<Record<string, AdInsight[]>>({})
+  const [expandedAdSet, setExpandedAdSet] = useState<string | null>(null)
+  const [loadingAdSets, setLoadingAdSets] = useState<string | null>(null)
+  const [loadingAds, setLoadingAds] = useState<string | null>(null)
+
+  // Track which meta_account_id each campaign belongs to
+  const [campaignAccountMap, setCampaignAccountMap] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (!clientId) return
@@ -48,7 +67,6 @@ export default function AdminClientView() {
     setError(null)
 
     try {
-      // Load client info
       const { data: clientData } = await supabase
         .from('clients')
         .select('id, name, company, logo_url, email')
@@ -62,7 +80,6 @@ export default function AdminClientView() {
       }
       setClient(clientData)
 
-      // Load meta accounts
       const { data: accounts } = await supabase
         .from('meta_accounts')
         .select('id, meta_account_id, meta_account_name, access_token')
@@ -86,9 +103,14 @@ export default function AdminClientView() {
 
       // Fetch campaigns for each account
       const allCampaigns: CampaignInsight[] = []
+      const accountMap: Record<string, string> = {}
+
       for (const account of accounts) {
         try {
           const data = await fetchCampaigns(account.meta_account_id)
+          for (const c of data) {
+            accountMap[c.campaign_id] = account.meta_account_id
+          }
           allCampaigns.push(...data)
         } catch (err) {
           console.error(`Error fetching campaigns for ${account.meta_account_id}:`, err)
@@ -96,10 +118,61 @@ export default function AdminClientView() {
       }
 
       setCampaigns(allCampaigns)
+      setCampaignAccountMap(accountMap)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error cargando datos')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function toggleCampaign(campaignId: string) {
+    if (expandedCampaign === campaignId) {
+      setExpandedCampaign(null)
+      setExpandedAdSet(null)
+      return
+    }
+    setExpandedCampaign(campaignId)
+    setExpandedAdSet(null)
+
+    if (adSets[campaignId]) return // already loaded
+
+    const accountId = campaignAccountMap[campaignId]
+    if (!accountId) return
+
+    setLoadingAdSets(campaignId)
+    try {
+      const data = await fetchAdSets(accountId, campaignId)
+      setAdSets(prev => ({ ...prev, [campaignId]: data }))
+    } catch (err) {
+      console.error('Error fetching ad sets:', err)
+    } finally {
+      setLoadingAdSets(null)
+    }
+  }
+
+  async function toggleAdSet(adsetId: string) {
+    if (expandedAdSet === adsetId) {
+      setExpandedAdSet(null)
+      return
+    }
+    setExpandedAdSet(adsetId)
+
+    if (ads[adsetId]) return
+
+    const campaignId = expandedCampaign
+    if (!campaignId) return
+    const accountId = campaignAccountMap[campaignId]
+    if (!accountId) return
+
+    setLoadingAds(adsetId)
+    try {
+      const data = await fetchAds(accountId, adsetId)
+      setAds(prev => ({ ...prev, [adsetId]: data }))
+    } catch (err) {
+      console.error('Error fetching ads:', err)
+    } finally {
+      setLoadingAds(null)
     }
   }
 
@@ -191,26 +264,254 @@ export default function AdminClientView() {
               <MetricCard title="ROAS" value={`${roas.toFixed(2)}x`} icon={<TrendingUp className="h-4 w-4" />} />
             </div>
 
-            {/* Campaigns table */}
+            {/* Campaigns table with expandable ad sets */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Campañas ({campaigns.length})</CardTitle>
               </CardHeader>
               <CardContent>
-                <CampaignTable campaigns={campaigns} budgets={budgets} />
+                <div className="rounded-lg border border-border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8"></TableHead>
+                        <TableHead>Campaña</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead className="text-right">Presupuesto</TableHead>
+                        <TableHead className="text-right">Gasto</TableHead>
+                        <TableHead className="text-right">Clicks</TableHead>
+                        <TableHead className="text-right">CTR</TableHead>
+                        <TableHead className="text-right">Conv.</TableHead>
+                        <TableHead className="text-right">ROAS</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {campaigns.map(campaign => {
+                        const budget = budgets.find(b => b.campaign_id === campaign.campaign_id && !b.adset_id)
+                        const isExpanded = expandedCampaign === campaign.campaign_id
+                        const campaignAdSets = adSets[campaign.campaign_id] || []
+
+                        return (
+                          <CampaignRows
+                            key={campaign.campaign_id}
+                            campaign={campaign}
+                            budget={budget}
+                            isExpanded={isExpanded}
+                            onToggle={() => toggleCampaign(campaign.campaign_id)}
+                            loadingAdSets={loadingAdSets === campaign.campaign_id}
+                            campaignAdSets={campaignAdSets}
+                            expandedAdSet={expandedAdSet}
+                            onToggleAdSet={toggleAdSet}
+                            loadingAds={loadingAds}
+                            ads={ads}
+                            budgets={budgets}
+                          />
+                        )
+                      })}
+                      {campaigns.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                            No se encontraron campañas
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
-
-            {campaigns.length === 0 && !loading && (
-              <Card>
-                <CardContent className="py-8 text-center text-muted-foreground">
-                  No se encontraron campañas. Verifica que el token de Meta tenga permisos y que la cuenta tenga campañas.
-                </CardContent>
-              </Card>
-            )}
           </>
         )}
       </div>
     </AdminLayout>
+  )
+}
+
+// Extracted component to avoid fragments-in-map issues
+function CampaignRows({
+  campaign, budget, isExpanded, onToggle, loadingAdSets,
+  campaignAdSets, expandedAdSet, onToggleAdSet, loadingAds, ads, budgets,
+}: {
+  campaign: CampaignInsight
+  budget: Budget | undefined
+  isExpanded: boolean
+  onToggle: () => void
+  loadingAdSets: boolean
+  campaignAdSets: AdSetInsight[]
+  expandedAdSet: string | null
+  onToggleAdSet: (id: string) => void
+  loadingAds: string | null
+  ads: Record<string, AdInsight[]>
+  budgets: Budget[]
+}) {
+  return (
+    <>
+      {/* Campaign row */}
+      <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onToggle}>
+        <TableCell className="w-8 pr-0">
+          {isExpanded ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          )}
+        </TableCell>
+        <TableCell className="font-medium">
+          {campaign.campaign_name || `Campaña ${campaign.campaign_id}`}
+        </TableCell>
+        <TableCell>{getStatusBadge(campaign.status)}</TableCell>
+        <TableCell className="text-right">
+          {budget ? (
+            <BudgetBar spent={campaign.spend} budget={budget.budget_amount} compact />
+          ) : (
+            <span className="text-muted-foreground text-sm">—</span>
+          )}
+        </TableCell>
+        <TableCell className="text-right font-medium">
+          ${campaign.spend?.toLocaleString('es-CL', { minimumFractionDigits: 0 })}
+        </TableCell>
+        <TableCell className="text-right">{campaign.clicks?.toLocaleString()}</TableCell>
+        <TableCell className="text-right">{campaign.ctr?.toFixed(2)}%</TableCell>
+        <TableCell className="text-right">{campaign.conversions?.toLocaleString()}</TableCell>
+        <TableCell className="text-right font-medium">{campaign.roas?.toFixed(2)}x</TableCell>
+      </TableRow>
+
+      {/* Expanded ad sets */}
+      {isExpanded && (
+        <>
+          {loadingAdSets ? (
+            <TableRow>
+              <TableCell colSpan={9} className="bg-muted/20">
+                <div className="flex items-center justify-center py-4 gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground">Cargando conjuntos de anuncios...</span>
+                </div>
+              </TableCell>
+            </TableRow>
+          ) : campaignAdSets.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={9} className="bg-muted/20 text-center text-sm text-muted-foreground py-4">
+                Sin conjuntos de anuncios
+              </TableCell>
+            </TableRow>
+          ) : (
+            campaignAdSets.map(adset => {
+              const adsetBudget = budgets.find(b => b.adset_id === adset.adset_id)
+              const isAdSetExpanded = expandedAdSet === adset.adset_id
+              const adsetAds = ads[adset.adset_id] || []
+
+              return (
+                <AdSetRows
+                  key={adset.adset_id}
+                  adset={adset}
+                  adsetBudget={adsetBudget}
+                  isExpanded={isAdSetExpanded}
+                  onToggle={() => onToggleAdSet(adset.adset_id)}
+                  loadingAds={loadingAds === adset.adset_id}
+                  adsetAds={adsetAds}
+                />
+              )
+            })
+          )}
+        </>
+      )}
+    </>
+  )
+}
+
+function AdSetRows({
+  adset, adsetBudget, isExpanded, onToggle, loadingAds, adsetAds,
+}: {
+  adset: AdSetInsight
+  adsetBudget: Budget | undefined
+  isExpanded: boolean
+  onToggle: () => void
+  loadingAds: boolean
+  adsetAds: AdInsight[]
+}) {
+  return (
+    <>
+      {/* Ad set row */}
+      <TableRow
+        className="cursor-pointer hover:bg-blue-50/50 bg-muted/20"
+        onClick={onToggle}
+      >
+        <TableCell className="w-8 pr-0 pl-6">
+          {isExpanded ? (
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
+        </TableCell>
+        <TableCell className="text-sm">
+          <span className="text-muted-foreground mr-1">↳</span>
+          {adset.adset_name}
+        </TableCell>
+        <TableCell>
+          <Badge variant={adset.status === 'ACTIVE' ? 'default' : 'secondary'} className={`text-xs ${adset.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : ''}`}>
+            {adset.status === 'ACTIVE' ? 'Activo' : adset.status}
+          </Badge>
+        </TableCell>
+        <TableCell className="text-right">
+          {adsetBudget ? (
+            <BudgetBar spent={adset.spend} budget={adsetBudget.budget_amount} compact />
+          ) : (
+            <span className="text-muted-foreground text-sm">—</span>
+          )}
+        </TableCell>
+        <TableCell className="text-right text-sm">${adset.spend?.toLocaleString('es-CL')}</TableCell>
+        <TableCell className="text-right text-sm">{adset.clicks?.toLocaleString()}</TableCell>
+        <TableCell className="text-right text-sm">{adset.ctr?.toFixed(2)}%</TableCell>
+        <TableCell className="text-right text-sm">{adset.conversions}</TableCell>
+        <TableCell className="text-right text-sm">{adset.roas?.toFixed(2)}x</TableCell>
+      </TableRow>
+
+      {/* Expanded ads */}
+      {isExpanded && (
+        <>
+          {loadingAds ? (
+            <TableRow>
+              <TableCell colSpan={9} className="bg-muted/10">
+                <div className="flex items-center justify-center py-3 gap-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                  <span className="text-xs text-muted-foreground">Cargando anuncios...</span>
+                </div>
+              </TableCell>
+            </TableRow>
+          ) : adsetAds.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={9} className="bg-muted/10 text-center text-xs text-muted-foreground py-3">
+                Sin anuncios
+              </TableCell>
+            </TableRow>
+          ) : (
+            adsetAds.map(ad => (
+              <TableRow key={ad.ad_id} className="bg-muted/10">
+                <TableCell className="w-8" />
+                <TableCell className="pl-10 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    {ad.creative_thumbnail_url && (
+                      <img src={ad.creative_thumbnail_url} alt="" className="h-6 w-6 rounded object-cover" />
+                    )}
+                    <span className="text-muted-foreground mr-1">↳</span>
+                    {ad.ad_name}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" className="text-xs">
+                    {ad.status === 'ACTIVE' ? 'Activo' : ad.status}
+                  </Badge>
+                </TableCell>
+                <TableCell />
+                <TableCell className="text-right text-xs">${ad.spend?.toLocaleString('es-CL')}</TableCell>
+                <TableCell className="text-right text-xs">{ad.clicks?.toLocaleString()}</TableCell>
+                <TableCell className="text-right text-xs">{ad.ctr?.toFixed(2)}%</TableCell>
+                <TableCell className="text-right text-xs">{ad.conversions}</TableCell>
+                <TableCell />
+              </TableRow>
+            ))
+          )}
+        </>
+      )}
+    </>
   )
 }

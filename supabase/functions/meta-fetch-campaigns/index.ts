@@ -51,7 +51,7 @@ serve(async (req) => {
     }
 
     // Fetch from Meta Marketing API
-    const fields = "campaign_name,objective,status"
+    const fields = "name,objective,status"
     const insightFields = "impressions,reach,clicks,ctr,spend,cpc,cpm,actions,cost_per_action_type,frequency"
     const metaUrl = `https://graph.facebook.com/v19.0/${meta_account_id}/campaigns?fields=${fields}&limit=100&access_token=${metaAccount.access_token}`
 
