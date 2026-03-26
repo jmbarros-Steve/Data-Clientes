@@ -4,13 +4,14 @@ import { useCampaigns } from '@/hooks/useCampaigns'
 import { useBudgets } from '@/hooks/useBudgets'
 import { ClientLayout } from '@/components/layout/ClientLayout'
 import { CampaignTable } from '@/components/campaigns/CampaignTable'
+import { DatePresetSelector } from '@/components/dashboard/DatePresetSelector'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Loader2, Search } from 'lucide-react'
 
 export default function Campaigns() {
   const { clientId } = useAuth()
-  const { campaigns, loading, selectedAccount } = useCampaigns(clientId)
+  const { campaigns, loading, selectedAccount, datePreset, setDatePreset } = useCampaigns(clientId)
   const { budgets } = useBudgets(selectedAccount)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -34,9 +35,12 @@ export default function Campaigns() {
   return (
     <ClientLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Campañas</h1>
-          <p className="text-muted-foreground">Todas tus campañas de Meta Ads</p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">Campañas</h1>
+            <p className="text-muted-foreground">Todas tus campañas de Meta Ads</p>
+          </div>
+          <DatePresetSelector value={datePreset} onChange={setDatePreset} />
         </div>
 
         {/* Filters */}

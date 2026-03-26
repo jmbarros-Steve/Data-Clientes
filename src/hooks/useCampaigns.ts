@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { fetchCampaigns, type CampaignInsight } from '@/lib/meta-api'
+import { DATE_PRESETS } from '@/lib/metric-utils'
 
 interface MetaAccount {
   id: string
@@ -14,6 +15,7 @@ export function useCampaigns(clientId: string | null) {
   const [campaigns, setCampaigns] = useState<CampaignInsight[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [datePreset, setDatePreset] = useState('30d')
 
   // Load meta accounts for this client
   useEffect(() => {
@@ -30,39 +32,32 @@ export function useCampaigns(clientId: string | null) {
       })
   }, [clientId])
 
-  const loadCampaigns = useCallback(async (datePreset = 'last_30d') => {
+  const loadCampaigns = useCallback(async (preset?: string) => {
     if (!selectedAccount) return
     setLoading(true)
     setError(null)
+
+    // Convert our preset key to Meta's date_preset format
+    const metaPreset = DATE_PRESETS.find(p => p.key === (preset || datePreset))?.metaPreset || 'last_30d'
+
     try {
-      // Try cache first
-      const { data: cached } = await supabase
-        .from('campaign_cache')
-        .select('data, fetched_at')
-        .eq('meta_account_id', selectedAccount)
-        .eq('cache_type', 'campaigns')
-        .order('fetched_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      const cacheAge = cached ? (Date.now() - new Date(cached.fetched_at).getTime()) / 1000 / 60 : Infinity
-
-      if (cached && cacheAge < 30) {
-        setCampaigns(cached.data as CampaignInsight[])
-      } else {
-        const data = await fetchCampaigns(selectedAccount, datePreset)
-        setCampaigns(data)
-      }
+      // Bypass cache when date preset changes
+      const data = await fetchCampaigns(selectedAccount, metaPreset)
+      setCampaigns(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error cargando campañas')
     } finally {
       setLoading(false)
     }
-  }, [selectedAccount])
+  }, [selectedAccount, datePreset])
 
   useEffect(() => {
     if (selectedAccount) loadCampaigns()
   }, [selectedAccount, loadCampaigns])
+
+  const handleDatePresetChange = useCallback((preset: string) => {
+    setDatePreset(preset)
+  }, [])
 
   const totals = campaigns.reduce(
     (acc, c) => ({
@@ -77,6 +72,8 @@ export function useCampaigns(clientId: string | null) {
 
   const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0
   const roas = totals.spend > 0 ? (campaigns.reduce((sum, c) => sum + (c.roas || 0) * (c.spend || 0), 0) / totals.spend) : 0
+  const cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0
+  const cpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0
 
   return {
     metaAccounts,
@@ -86,6 +83,8 @@ export function useCampaigns(clientId: string | null) {
     loading,
     error,
     loadCampaigns,
-    totals: { ...totals, ctr, roas },
+    datePreset,
+    setDatePreset: handleDatePresetChange,
+    totals: { ...totals, ctr, roas, cpc, cpm },
   }
 }

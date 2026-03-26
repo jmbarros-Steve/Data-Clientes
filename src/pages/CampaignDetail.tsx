@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCampaigns } from '@/hooks/useCampaigns'
 import { useBudgets } from '@/hooks/useBudgets'
+import { useMetricTargets } from '@/hooks/useMetricTargets'
 import { fetchAdSets, fetchAds, type AdSetInsight, type AdInsight } from '@/lib/meta-api'
 import { ClientLayout } from '@/components/layout/ClientLayout'
 import { MetricCard } from '@/components/dashboard/MetricCard'
@@ -10,13 +11,14 @@ import { BudgetBar } from '@/components/dashboard/BudgetBar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, DollarSign, MousePointerClick, Target, TrendingUp, Loader2 } from 'lucide-react'
+import { ArrowLeft, DollarSign, MousePointerClick, Target, TrendingUp, Loader2, Layers, Percent } from 'lucide-react'
 
 export default function CampaignDetail() {
   const { id: campaignId } = useParams<{ id: string }>()
   const { clientId } = useAuth()
   const { campaigns, selectedAccount } = useCampaigns(clientId)
   const { getBudgetForCampaign, getBudgetForAdSet } = useBudgets(selectedAccount)
+  const { getTarget } = useMetricTargets(selectedAccount)
 
   const [adSets, setAdSets] = useState<AdSetInsight[]>([])
   const [ads, setAds] = useState<Record<string, AdInsight[]>>({})
@@ -53,12 +55,10 @@ export default function CampaignDetail() {
   return (
     <ClientLayout>
       <div className="space-y-6">
-        {/* Back link */}
         <Link to="/campaigns" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" /> Volver a campañas
         </Link>
 
-        {/* Campaign header */}
         <div>
           <h1 className="text-2xl font-bold">{campaign?.campaign_name ?? 'Campaña'}</h1>
           {campaign?.status && (
@@ -68,7 +68,6 @@ export default function CampaignDetail() {
           )}
         </div>
 
-        {/* Budget */}
         {budget && campaign && (
           <Card>
             <CardContent className="p-6">
@@ -77,20 +76,22 @@ export default function CampaignDetail() {
           </Card>
         )}
 
-        {/* Metrics */}
+        {/* 6 Metric Cards: Gasto, CPC, CPM, Clicks, Conversiones, ROAS */}
         {campaign && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <MetricCard title="Gasto" value={`$${campaign.spend?.toLocaleString('es-CL')}`} icon={<DollarSign className="h-4 w-4" />} />
-            <MetricCard title="Clicks" value={campaign.clicks?.toLocaleString()} icon={<MousePointerClick className="h-4 w-4" />} />
-            <MetricCard title="Conversiones" value={campaign.conversions?.toLocaleString()} icon={<Target className="h-4 w-4" />} />
-            <MetricCard title="ROAS" value={`${campaign.roas?.toFixed(2)}x`} icon={<TrendingUp className="h-4 w-4" />} />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <MetricCard title="Gasto" value={`$${campaign.spend?.toLocaleString('es-CL')}`} icon={<DollarSign className="h-4 w-4" />} metricKey="spend" target={getTarget('spend')} />
+            <MetricCard title="CPC" value={`$${campaign.cpc?.toFixed(0)}`} icon={<MousePointerClick className="h-4 w-4" />} metricKey="cpc" target={getTarget('cpc')} tooltipText="Costo por click" />
+            <MetricCard title="CPM" value={`$${campaign.cpm?.toFixed(0)}`} icon={<Layers className="h-4 w-4" />} metricKey="cpm" target={getTarget('cpm')} tooltipText="Costo por 1.000 impresiones" />
+            <MetricCard title="Clicks" value={campaign.clicks?.toLocaleString()} icon={<MousePointerClick className="h-4 w-4" />} metricKey="clicks" target={getTarget('clicks')} />
+            <MetricCard title="Conversiones" value={campaign.conversions?.toLocaleString()} icon={<Target className="h-4 w-4" />} metricKey="conversions" target={getTarget('conversions')} />
+            <MetricCard title="ROAS" value={`${campaign.roas?.toFixed(2)}x`} icon={<TrendingUp className="h-4 w-4" />} metricKey="roas" target={getTarget('roas')} />
           </div>
         )}
 
         {/* Ad Sets */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Conjuntos de Anuncios</CardTitle>
+            <CardTitle className="text-base font-semibold">Conjuntos de Anuncios</CardTitle>
           </CardHeader>
           <CardContent>
             {loadingAdSets ? (
@@ -106,6 +107,7 @@ export default function CampaignDetail() {
                       <TableHead>Estado</TableHead>
                       <TableHead className="text-right">Presupuesto</TableHead>
                       <TableHead className="text-right">Gasto</TableHead>
+                      <TableHead className="text-right">CPC</TableHead>
                       <TableHead className="text-right">Clicks</TableHead>
                       <TableHead className="text-right">CTR</TableHead>
                       <TableHead className="text-right">Conv.</TableHead>
@@ -129,17 +131,17 @@ export default function CampaignDetail() {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                              {adsetBudget ? (
-                                <BudgetBar spent={adset.spend} budget={adsetBudget.budget_amount} compact />
-                              ) : '—'}
+                              {adsetBudget ? <BudgetBar spent={adset.spend} budget={adsetBudget.budget_amount} compact /> : '—'}
                             </TableCell>
-                            <TableCell className="text-right">${adset.spend?.toLocaleString('es-CL')}</TableCell>
-                            <TableCell className="text-right">{adset.clicks?.toLocaleString()}</TableCell>
-                            <TableCell className="text-right">{adset.ctr?.toFixed(2)}%</TableCell>
-                            <TableCell className="text-right">{adset.conversions}</TableCell>
-                            <TableCell className="text-right">{adset.roas?.toFixed(2)}x</TableCell>
+                            <TableCell className="text-right tabular-nums">${adset.spend?.toLocaleString('es-CL')}</TableCell>
+                            <TableCell className="text-right tabular-nums">${adset.cpc?.toFixed(0)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{adset.clicks?.toLocaleString()}</TableCell>
+                            <TableCell className="text-right tabular-nums">{adset.ctr?.toFixed(2)}%</TableCell>
+                            <TableCell className="text-right tabular-nums">{adset.conversions}</TableCell>
+                            <TableCell className={`text-right tabular-nums font-medium ${adset.roas >= 3 ? 'text-green-600' : adset.roas >= 2 ? 'text-yellow-600' : 'text-red-500'}`}>
+                              {adset.roas?.toFixed(2)}x
+                            </TableCell>
                           </TableRow>
-                          {/* Expanded ads */}
                           {expandedAdSet === adset.adset_id && ads[adset.adset_id]?.map(ad => (
                             <TableRow key={ad.ad_id} className="bg-muted/30">
                               <TableCell className="pl-8 text-sm text-muted-foreground">
@@ -152,10 +154,11 @@ export default function CampaignDetail() {
                                 <Badge variant="outline" className="text-xs">{ad.status}</Badge>
                               </TableCell>
                               <TableCell />
-                              <TableCell className="text-right text-sm">${ad.spend?.toLocaleString('es-CL')}</TableCell>
-                              <TableCell className="text-right text-sm">{ad.clicks?.toLocaleString()}</TableCell>
-                              <TableCell className="text-right text-sm">{ad.ctr?.toFixed(2)}%</TableCell>
-                              <TableCell className="text-right text-sm">{ad.conversions}</TableCell>
+                              <TableCell className="text-right text-sm tabular-nums">${ad.spend?.toLocaleString('es-CL')}</TableCell>
+                              <TableCell className="text-right text-sm tabular-nums">${ad.cpc?.toFixed(0)}</TableCell>
+                              <TableCell className="text-right text-sm tabular-nums">{ad.clicks?.toLocaleString()}</TableCell>
+                              <TableCell className="text-right text-sm tabular-nums">{ad.ctr?.toFixed(2)}%</TableCell>
+                              <TableCell className="text-right text-sm tabular-nums">{ad.conversions}</TableCell>
                               <TableCell />
                             </TableRow>
                           ))}
@@ -164,7 +167,7 @@ export default function CampaignDetail() {
                     })}
                     {adSets.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                           No hay conjuntos de anuncios
                         </TableCell>
                       </TableRow>

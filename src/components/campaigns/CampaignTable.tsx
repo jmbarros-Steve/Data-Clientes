@@ -27,9 +27,11 @@ export function CampaignTable({ campaigns, budgets }: CampaignTableProps) {
             <TableHead>Estado</TableHead>
             <TableHead className="text-right">Presupuesto</TableHead>
             <TableHead className="text-right">Gasto</TableHead>
+            <TableHead className="text-right">CPC</TableHead>
+            <TableHead className="text-right">CPM</TableHead>
             <TableHead className="text-right">Clicks</TableHead>
             <TableHead className="text-right">CTR</TableHead>
-            <TableHead className="text-right">Conversiones</TableHead>
+            <TableHead className="text-right">Conv.</TableHead>
             <TableHead className="text-right">ROAS</TableHead>
           </TableRow>
         </TableHeader>
@@ -39,28 +41,27 @@ export function CampaignTable({ campaigns, budgets }: CampaignTableProps) {
             return (
               <TableRow key={campaign.campaign_id} className="hover:bg-muted/50">
                 <TableCell>
-                  <Link
-                    to={`/campaigns/${campaign.campaign_id}`}
-                    className="font-medium text-primary hover:underline"
-                  >
+                  <Link to={`/campaigns/${campaign.campaign_id}`} className="font-medium text-primary hover:underline">
                     {campaign.campaign_name}
                   </Link>
                 </TableCell>
                 <TableCell>{getStatusBadge(campaign.status)}</TableCell>
                 <TableCell className="text-right">
-                  {budget ? (
-                    <BudgetBar spent={campaign.spend} budget={budget.budget_amount} compact />
-                  ) : (
-                    <span className="text-muted-foreground text-sm">—</span>
-                  )}
+                  {budget ? <BudgetBar spent={campaign.spend} budget={budget.budget_amount} compact /> : <span className="text-muted-foreground text-sm">—</span>}
                 </TableCell>
-                <TableCell className="text-right font-medium">
+                <TableCell className="text-right font-medium tabular-nums">
                   ${campaign.spend?.toLocaleString('es-CL', { minimumFractionDigits: 0 })}
                 </TableCell>
-                <TableCell className="text-right">{campaign.clicks?.toLocaleString()}</TableCell>
-                <TableCell className="text-right">{campaign.ctr?.toFixed(2)}%</TableCell>
-                <TableCell className="text-right">{campaign.conversions?.toLocaleString()}</TableCell>
-                <TableCell className="text-right font-medium">
+                <TableCell className="text-right tabular-nums">
+                  ${campaign.cpc?.toFixed(0)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  ${campaign.cpm?.toFixed(0)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{campaign.clicks?.toLocaleString()}</TableCell>
+                <TableCell className="text-right tabular-nums">{campaign.ctr?.toFixed(2)}%</TableCell>
+                <TableCell className="text-right tabular-nums">{campaign.conversions?.toLocaleString()}</TableCell>
+                <TableCell className={`text-right font-medium tabular-nums ${campaign.roas >= 3 ? 'text-green-600' : campaign.roas >= 2 ? 'text-yellow-600' : 'text-red-500'}`}>
                   {campaign.roas?.toFixed(2)}x
                 </TableCell>
               </TableRow>
@@ -68,7 +69,7 @@ export function CampaignTable({ campaigns, budgets }: CampaignTableProps) {
           })}
           {campaigns.length === 0 && (
             <TableRow>
-              <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                 No hay campañas disponibles
               </TableCell>
             </TableRow>
