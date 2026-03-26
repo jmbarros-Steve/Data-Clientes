@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { LogoUpload } from '@/components/admin/LogoUpload'
 import { ContactList } from '@/components/admin/ContactList'
+import { MetaAccountPicker } from '@/components/admin/MetaAccountPicker'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,13 +38,12 @@ export default function Admin() {
   const [loading, setLoading] = useState(true)
   const [editingClient, setEditingClient] = useState<Client | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [metaDialogOpen, setMetaDialogOpen] = useState(false)
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
+  const [metaPickerOpen, setMetaPickerOpen] = useState(false)
+  const [selectedClientForMeta, setSelectedClientForMeta] = useState<Client | null>(null)
   const [saving, setSaving] = useState(false)
 
   // Form state
   const [form, setForm] = useState({ name: '', company: '', email: '', phone: '', notes: '', password: '' })
-  const [metaForm, setMetaForm] = useState({ meta_account_id: '', meta_account_name: '', access_token: '' })
 
   useEffect(() => {
     loadData()
@@ -90,7 +90,6 @@ export default function Admin() {
           notes: form.notes || null,
         }).eq('id', editingClient.id)
       } else {
-        // Create user via edge function, then create client
         const { data: session } = await supabase.auth.getSession()
         const token = session.session?.access_token
 
@@ -121,26 +120,6 @@ export default function Admin() {
     if (!confirm('¿Eliminar este cliente y todos sus datos?')) return
     await supabase.from('clients').delete().eq('id', id)
     await loadData()
-  }
-
-  async function saveMetaAccount() {
-    if (!selectedClientId) return
-    setSaving(true)
-    try {
-      await supabase.from('meta_accounts').insert({
-        client_id: selectedClientId,
-        meta_account_id: metaForm.meta_account_id,
-        meta_account_name: metaForm.meta_account_name || null,
-        access_token: metaForm.access_token,
-      })
-      await loadData()
-      setMetaDialogOpen(false)
-      setMetaForm({ meta_account_id: '', meta_account_name: '', access_token: '' })
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error')
-    } finally {
-      setSaving(false)
-    }
   }
 
   async function deleteMetaAccount(id: string) {
@@ -270,9 +249,9 @@ export default function Admin() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => { setSelectedClientId(client.id); setMetaDialogOpen(true) }}
+                        onClick={() => { setSelectedClientForMeta(client); setMetaPickerOpen(true) }}
                       >
-                        <LinkIcon className="h-3.5 w-3.5 mr-1" /> Agregar
+                        <LinkIcon className="h-3.5 w-3.5 mr-1" /> Asignar Cuenta
                       </Button>
                     </div>
                     {clientMeta.map(ma => (
@@ -310,45 +289,16 @@ export default function Admin() {
           )}
         </div>
 
-        {/* Meta account dialog */}
-        <Dialog open={metaDialogOpen} onOpenChange={setMetaDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Agregar Cuenta de Meta Ads</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Account ID de Meta *</Label>
-                <Input
-                  placeholder="Ej: act_123456789"
-                  value={metaForm.meta_account_id}
-                  onChange={e => setMetaForm(f => ({ ...f, meta_account_id: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Nombre de la cuenta</Label>
-                <Input
-                  placeholder="Ej: Campaña Verano 2026"
-                  value={metaForm.meta_account_name}
-                  onChange={e => setMetaForm(f => ({ ...f, meta_account_name: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Access Token *</Label>
-                <Input
-                  type="password"
-                  placeholder="Token de acceso de Meta"
-                  value={metaForm.access_token}
-                  onChange={e => setMetaForm(f => ({ ...f, access_token: e.target.value }))}
-                />
-              </div>
-              <Button onClick={saveMetaAccount} disabled={saving || !metaForm.meta_account_id || !metaForm.access_token} className="w-full">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                Agregar Cuenta
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        {/* Meta Account Picker */}
+        {selectedClientForMeta && (
+          <MetaAccountPicker
+            clientId={selectedClientForMeta.id}
+            clientName={selectedClientForMeta.name}
+            open={metaPickerOpen}
+            onOpenChange={setMetaPickerOpen}
+            onAssigned={loadData}
+          />
+        )}
       </div>
     </AdminLayout>
   )
