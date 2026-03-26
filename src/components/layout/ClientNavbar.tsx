@@ -24,12 +24,10 @@ export function ClientNavbar() {
             {clientData?.logo_url ? (
               <img src={clientData.logo_url} alt="Logo" className="h-8 w-8 rounded object-cover" />
             ) : (
-              <div className="h-8 w-8 rounded bg-primary flex items-center justify-center text-white font-bold text-sm">
-                {clientData?.name?.[0] ?? 'D'}
-              </div>
+              <img src="/logo-bg-consult.png" alt="BG Consult Hub" className="h-8 object-contain" />
             )}
             <span className="font-semibold text-foreground hidden sm:block">
-              {clientData?.company ?? clientData?.name ?? 'Data Clientes'}
+              {clientData?.company ?? clientData?.name ?? 'BG Consult Hub'}
             </span>
           </div>
 

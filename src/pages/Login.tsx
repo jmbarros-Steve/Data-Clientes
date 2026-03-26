@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { BarChart3, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -33,10 +33,8 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto h-14 w-14 rounded-xl bg-primary flex items-center justify-center">
-            <BarChart3 className="h-7 w-7 text-white" />
-          </div>
-          <CardTitle className="text-2xl">Data Clientes</CardTitle>
+          <img src="/logo-bg-consult.png" alt="BG Consult Hub" className="mx-auto h-20 object-contain" />
+          <CardTitle className="text-2xl">BG Consult Hub</CardTitle>
           <p className="text-muted-foreground text-sm">
             Accede a tu dashboard de campañas
           </p>

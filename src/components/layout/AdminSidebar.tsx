@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { Users, DollarSign, BookOpen, LogOut, LayoutDashboard, Settings } from 'lucide-react'
+import { Users, DollarSign, BookOpen, LogOut, LayoutDashboard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 const adminLinks = [
@@ -15,9 +15,9 @@ export function AdminSidebar() {
 
   return (
     <aside className="w-64 border-r border-border bg-sidebar min-h-screen p-4 flex flex-col">
-      <div className="flex items-center gap-2 mb-8 px-2">
-        <Settings className="h-6 w-6 text-primary" />
-        <span className="font-bold text-lg text-sidebar-foreground">Data Clientes</span>
+      <div className="flex items-center gap-3 mb-8 px-2">
+        <img src="/logo-bg-consult.png" alt="BG Consult Hub" className="h-8 object-contain" />
+        <span className="font-bold text-sm text-sidebar-foreground">BG Consult Hub</span>
       </div>
 
       <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-2 mb-2">
