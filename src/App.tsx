@@ -9,6 +9,8 @@ import MetricsGlossary from '@/pages/MetricsGlossary'
 import Admin from '@/pages/Admin'
 import AdminBudgets from '@/pages/AdminBudgets'
 import AdminGlossary from '@/pages/AdminGlossary'
+import PrivacyPolicy from '@/pages/PrivacyPolicy'
+import TermsOfService from '@/pages/TermsOfService'
 import { Loader2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -58,6 +60,8 @@ function AppRoutes() {
       <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
       <Route path="/admin/budgets" element={<AdminRoute><AdminBudgets /></AdminRoute>} />
       <Route path="/admin/glossary" element={<AdminRoute><AdminGlossary /></AdminRoute>} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
+      <Route path="/terms" element={<TermsOfService />} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   )
