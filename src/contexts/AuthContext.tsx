@@ -38,17 +38,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [metaAccounts, setMetaAccounts] = useState<MetaAccount[]>([])
   const [loading, setLoading] = useState(true)
 
-  async function checkRole(token: string) {
+  async function checkRole(accessToken: string, userId: string) {
     try {
       // Use edge function to bypass PostgREST schema cache issue
       const { data, error } = await supabase.functions.invoke('auth-check-role', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
       })
 
       if (error || !data) {
         console.error('auth-check-role error:', error)
-        // Fallback to direct PostgREST queries
-        await checkRoleFallback(token)
+        await checkRoleFallback(userId)
         return
       }
 
@@ -58,11 +57,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setMetaAccounts(data.metaAccounts || [])
     } catch (err) {
       console.error('checkRole error:', err)
-      await checkRoleFallback(token)
+      await checkRoleFallback(userId)
     }
   }
 
-  // Fallback if edge function not deployed yet
+  // Fallback if edge function fails (uses PostgREST — may not work for all tables)
   async function checkRoleFallback(userId: string) {
     const { data: adminData } = await supabase
       .from('admins')
@@ -88,7 +87,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setClientId(client.id)
       setClientData(client)
 
-      // Try to get meta accounts
       const { data: accounts } = await supabase
         .from('meta_accounts')
         .select('id, meta_account_id, meta_account_name')
@@ -104,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(s)
       setUser(s?.user ?? null)
       if (s?.user && s.access_token) {
-        checkRole(s.access_token).finally(() => setLoading(false))
+        checkRole(s.access_token, s.user.id).finally(() => setLoading(false))
       } else {
         setLoading(false)
       }
@@ -114,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(s)
       setUser(s?.user ?? null)
       if (s?.user && s.access_token) {
-        checkRole(s.access_token).finally(() => setLoading(false))
+        checkRole(s.access_token, s.user.id).finally(() => setLoading(false))
       } else {
         setIsAdmin(false)
         setClientId(null)
