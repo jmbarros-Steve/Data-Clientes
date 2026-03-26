@@ -187,6 +187,8 @@ export default function AdminClientView() {
     { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
   )
   const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0
+  const cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0
+  const cpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0
   const roas = totals.spend > 0 ? campaigns.reduce((sum, c) => sum + (c.roas || 0) * (c.spend || 0), 0) / totals.spend : 0
 
   const accountBudget = budgets.find(b => !b.campaign_id && !b.adset_id)
@@ -256,11 +258,13 @@ export default function AdminClientView() {
             )}
 
             {/* Metrics */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
               <MetricCard title="Gasto Total" value={`$${totals.spend.toLocaleString('es-CL', { minimumFractionDigits: 0 })}`} icon={<DollarSign className="h-4 w-4" />} />
               <MetricCard title="Impresiones" value={totals.impressions.toLocaleString()} icon={<Eye className="h-4 w-4" />} />
               <MetricCard title="Clicks" value={totals.clicks.toLocaleString()} icon={<MousePointerClick className="h-4 w-4" />} />
               <MetricCard title="CTR" value={`${ctr.toFixed(2)}%`} icon={<Percent className="h-4 w-4" />} />
+              <MetricCard title="CPC" value={`$${cpc.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`} icon={<MousePointerClick className="h-4 w-4" />} />
+              <MetricCard title="CPM" value={`$${cpm.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`} icon={<Eye className="h-4 w-4" />} />
               <MetricCard title="Conversiones" value={totals.conversions.toLocaleString()} icon={<Target className="h-4 w-4" />} />
               <MetricCard title="ROAS" value={`${roas.toFixed(2)}x`} icon={<TrendingUp className="h-4 w-4" />} />
             </div>
@@ -278,10 +282,12 @@ export default function AdminClientView() {
                         <TableHead className="w-8"></TableHead>
                         <TableHead>Campaña</TableHead>
                         <TableHead>Estado</TableHead>
-                        <TableHead className="text-right">Presupuesto</TableHead>
                         <TableHead className="text-right">Gasto</TableHead>
+                        <TableHead className="text-right">Impresiones</TableHead>
                         <TableHead className="text-right">Clicks</TableHead>
                         <TableHead className="text-right">CTR</TableHead>
+                        <TableHead className="text-right">CPC</TableHead>
+                        <TableHead className="text-right">CPM</TableHead>
                         <TableHead className="text-right">Conv.</TableHead>
                         <TableHead className="text-right">ROAS</TableHead>
                       </TableRow>
@@ -311,7 +317,7 @@ export default function AdminClientView() {
                       })}
                       {campaigns.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                             No se encontraron campañas
                           </TableCell>
                         </TableRow>
@@ -372,17 +378,14 @@ function CampaignRows({
         </TableCell>
         <TableCell>{getStatusBadge(campaign.status)}</TableCell>
         <TableCell className="text-right">
-          {budget ? (
-            <BudgetBar spent={campaign.spend} budget={budget.budget_amount} compact />
-          ) : (
-            <span className="text-muted-foreground text-sm">—</span>
-          )}
+          <div className="font-medium">${campaign.spend?.toLocaleString('es-CL', { minimumFractionDigits: 0 })}</div>
+          {budget && <BudgetBar spent={campaign.spend} budget={budget.budget_amount} compact />}
         </TableCell>
-        <TableCell className="text-right font-medium">
-          ${campaign.spend?.toLocaleString('es-CL', { minimumFractionDigits: 0 })}
-        </TableCell>
+        <TableCell className="text-right">{campaign.impressions?.toLocaleString()}</TableCell>
         <TableCell className="text-right">{campaign.clicks?.toLocaleString()}</TableCell>
         <TableCell className="text-right">{campaign.ctr?.toFixed(2)}%</TableCell>
+        <TableCell className="text-right">${campaign.cpc?.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</TableCell>
+        <TableCell className="text-right">${campaign.cpm?.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</TableCell>
         <TableCell className="text-right">{campaign.conversions?.toLocaleString()}</TableCell>
         <TableCell className="text-right font-medium">{campaign.roas?.toFixed(2)}x</TableCell>
       </TableRow>
@@ -392,7 +395,7 @@ function CampaignRows({
         <>
           {loadingAdSets ? (
             <TableRow>
-              <TableCell colSpan={9} className="bg-muted/20">
+              <TableCell colSpan={11} className="bg-muted/20">
                 <div className="flex items-center justify-center py-4 gap-2">
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
                   <span className="text-sm text-muted-foreground">Cargando conjuntos de anuncios...</span>
@@ -401,7 +404,7 @@ function CampaignRows({
             </TableRow>
           ) : campaignAdSets.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={9} className="bg-muted/20 text-center text-sm text-muted-foreground py-4">
+              <TableCell colSpan={11} className="bg-muted/20 text-center text-sm text-muted-foreground py-4">
                 Sin conjuntos de anuncios
               </TableCell>
             </TableRow>
@@ -463,16 +466,15 @@ function AdSetRows({
             {adset.status === 'ACTIVE' ? 'Activo' : adset.status}
           </Badge>
         </TableCell>
-        <TableCell className="text-right">
-          {adsetBudget ? (
-            <BudgetBar spent={adset.spend} budget={adsetBudget.budget_amount} compact />
-          ) : (
-            <span className="text-muted-foreground text-sm">—</span>
-          )}
+        <TableCell className="text-right text-sm">
+          <div>${adset.spend?.toLocaleString('es-CL')}</div>
+          {adsetBudget && <BudgetBar spent={adset.spend} budget={adsetBudget.budget_amount} compact />}
         </TableCell>
-        <TableCell className="text-right text-sm">${adset.spend?.toLocaleString('es-CL')}</TableCell>
+        <TableCell className="text-right text-sm">{adset.impressions?.toLocaleString()}</TableCell>
         <TableCell className="text-right text-sm">{adset.clicks?.toLocaleString()}</TableCell>
         <TableCell className="text-right text-sm">{adset.ctr?.toFixed(2)}%</TableCell>
+        <TableCell className="text-right text-sm">${adset.cpc?.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</TableCell>
+        <TableCell className="text-right text-sm">—</TableCell>
         <TableCell className="text-right text-sm">{adset.conversions}</TableCell>
         <TableCell className="text-right text-sm">{adset.roas?.toFixed(2)}x</TableCell>
       </TableRow>
@@ -482,7 +484,7 @@ function AdSetRows({
         <>
           {loadingAds ? (
             <TableRow>
-              <TableCell colSpan={9} className="bg-muted/10">
+              <TableCell colSpan={11} className="bg-muted/10">
                 <div className="flex items-center justify-center py-3 gap-2">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
                   <span className="text-xs text-muted-foreground">Cargando anuncios...</span>
@@ -491,7 +493,7 @@ function AdSetRows({
             </TableRow>
           ) : adsetAds.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={9} className="bg-muted/10 text-center text-xs text-muted-foreground py-3">
+              <TableCell colSpan={11} className="bg-muted/10 text-center text-xs text-muted-foreground py-3">
                 Sin anuncios
               </TableCell>
             </TableRow>
@@ -513,10 +515,12 @@ function AdSetRows({
                     {ad.status === 'ACTIVE' ? 'Activo' : ad.status}
                   </Badge>
                 </TableCell>
-                <TableCell />
                 <TableCell className="text-right text-xs">${ad.spend?.toLocaleString('es-CL')}</TableCell>
+                <TableCell className="text-right text-xs">{ad.impressions?.toLocaleString()}</TableCell>
                 <TableCell className="text-right text-xs">{ad.clicks?.toLocaleString()}</TableCell>
                 <TableCell className="text-right text-xs">{ad.ctr?.toFixed(2)}%</TableCell>
+                <TableCell className="text-right text-xs">${ad.cpc?.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</TableCell>
+                <TableCell className="text-right text-xs">—</TableCell>
                 <TableCell className="text-right text-xs">{ad.conversions}</TableCell>
                 <TableCell />
               </TableRow>
