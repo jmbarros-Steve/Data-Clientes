@@ -56,6 +56,7 @@ export default function AdminClientView() {
 
   // Track which meta_account_id each campaign belongs to
   const [campaignAccountMap, setCampaignAccountMap] = useState<Record<string, string>>({})
+  const [showAllCampaigns, setShowAllCampaigns] = useState(false)
 
   useEffect(() => {
     if (!clientId) return
@@ -286,7 +287,7 @@ export default function AdminClientView() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {campaigns.map(campaign => {
+                      {(showAllCampaigns ? campaigns : campaigns.slice(0, 5)).map(campaign => {
                         const budget = budgets.find(b => b.campaign_id === campaign.campaign_id && !b.adset_id)
                         const isExpanded = expandedCampaign === campaign.campaign_id
                         const campaignAdSets = adSets[campaign.campaign_id] || []
@@ -318,6 +319,17 @@ export default function AdminClientView() {
                     </TableBody>
                   </Table>
                 </div>
+                {campaigns.length > 5 && (
+                  <div className="mt-3 text-center">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowAllCampaigns(!showAllCampaigns)}
+                    >
+                      {showAllCampaigns ? 'Mostrar menos' : `Ver más (${campaigns.length - 5} campañas más)`}
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </>
