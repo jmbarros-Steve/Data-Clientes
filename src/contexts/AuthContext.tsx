@@ -8,6 +8,7 @@ interface AuthContextType {
   isAdmin: boolean
   clientId: string | null
   clientData: ClientData | null
+  metaAccounts: MetaAccount[]
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
@@ -20,6 +21,12 @@ interface ClientData {
   logo_url: string | null
 }
 
+interface MetaAccount {
+  id: string
+  meta_account_id: string
+  meta_account_name: string | null
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -28,10 +35,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [clientId, setClientId] = useState<string | null>(null)
   const [clientData, setClientData] = useState<ClientData | null>(null)
+  const [metaAccounts, setMetaAccounts] = useState<MetaAccount[]>([])
   const [loading, setLoading] = useState(true)
 
-  async function checkRole(userId: string) {
-    // Check if admin
+  async function checkRole(token: string) {
+    try {
+      // Use edge function to bypass PostgREST schema cache issue
+      const { data, error } = await supabase.functions.invoke('auth-check-role', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (error || !data) {
+        console.error('auth-check-role error:', error)
+        // Fallback to direct PostgREST queries
+        await checkRoleFallback(token)
+        return
+      }
+
+      setIsAdmin(data.isAdmin)
+      setClientId(data.clientId)
+      setClientData(data.clientData)
+      setMetaAccounts(data.metaAccounts || [])
+    } catch (err) {
+      console.error('checkRole error:', err)
+      await checkRoleFallback(token)
+    }
+  }
+
+  // Fallback if edge function not deployed yet
+  async function checkRoleFallback(userId: string) {
     const { data: adminData } = await supabase
       .from('admins')
       .select('id')
@@ -42,10 +74,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAdmin(true)
       setClientId(null)
       setClientData(null)
+      setMetaAccounts([])
       return
     }
 
-    // Check if client
     const { data: client } = await supabase
       .from('clients')
       .select('id, name, company, logo_url')
@@ -55,6 +87,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (client) {
       setClientId(client.id)
       setClientData(client)
+
+      // Try to get meta accounts
+      const { data: accounts } = await supabase
+        .from('meta_accounts')
+        .select('id, meta_account_id, meta_account_name')
+        .eq('client_id', client.id)
+
+      setMetaAccounts(accounts || [])
     }
     setIsAdmin(false)
   }
@@ -63,8 +103,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s)
       setUser(s?.user ?? null)
-      if (s?.user) {
-        checkRole(s.user.id).finally(() => setLoading(false))
+      if (s?.user && s.access_token) {
+        checkRole(s.access_token).finally(() => setLoading(false))
       } else {
         setLoading(false)
       }
@@ -73,12 +113,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s)
       setUser(s?.user ?? null)
-      if (s?.user) {
-        checkRole(s.user.id).finally(() => setLoading(false))
+      if (s?.user && s.access_token) {
+        checkRole(s.access_token).finally(() => setLoading(false))
       } else {
         setIsAdmin(false)
         setClientId(null)
         setClientData(null)
+        setMetaAccounts([])
         setLoading(false)
       }
     })
@@ -96,10 +137,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAdmin(false)
     setClientId(null)
     setClientData(null)
+    setMetaAccounts([])
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, isAdmin, clientId, clientData, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, session, isAdmin, clientId, clientData, metaAccounts, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )

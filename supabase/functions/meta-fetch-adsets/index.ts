@@ -1,10 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { Pool } from "https://deno.land/x/postgres@v0.19.3/mod.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
+
+const dbUrl = Deno.env.get("SUPABASE_DB_URL")!
+const pool = new Pool(dbUrl, 1)
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -33,20 +37,26 @@ serve(async (req) => {
 
     const { meta_account_id, campaign_id } = await req.json()
 
-    const { data: metaAccount } = await supabase
-      .from("meta_accounts")
-      .select("access_token")
-      .eq("meta_account_id", meta_account_id)
-      .single()
-
-    if (!metaAccount) {
-      return new Response(JSON.stringify({ error: "Cuenta no encontrada" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
+    // Get access token via direct DB
+    const conn = await pool.connect()
+    let accessToken: string
+    try {
+      const result = await conn.queryObject<{ access_token: string }>(
+        "SELECT access_token FROM meta_accounts WHERE meta_account_id = $1 LIMIT 1",
+        [meta_account_id]
+      )
+      if (result.rows.length === 0) {
+        return new Response(JSON.stringify({ error: "Cuenta no encontrada" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        })
+      }
+      accessToken = result.rows[0].access_token
+    } finally {
+      conn.release()
     }
 
     const fields = "name,status,insights{impressions,reach,clicks,ctr,spend,cpc,actions}"
-    const url = `https://graph.facebook.com/v19.0/${campaign_id}/adsets?fields=${fields}&date_preset=last_30d&access_token=${metaAccount.access_token}`
+    const url = `https://graph.facebook.com/v19.0/${campaign_id}/adsets?fields=${fields}&date_preset=last_30d&access_token=${accessToken}`
 
     const res = await fetch(url)
     const data = await res.json()
