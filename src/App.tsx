@@ -60,6 +60,7 @@ function AppRoutes() {
       <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
       <Route path="/admin/budgets" element={<AdminRoute><AdminBudgets /></AdminRoute>} />
       <Route path="/admin/glossary" element={<AdminRoute><AdminGlossary /></AdminRoute>} />
+      <Route path="/meta/oauth" element={<div className="flex items-center justify-center min-h-screen"><p>Autenticación completada. Puedes cerrar esta ventana.</p></div>} />
       <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/terms" element={<TermsOfService />} />
       <Route path="*" element={<Navigate to="/" />} />
