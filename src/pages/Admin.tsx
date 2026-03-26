@@ -11,7 +11,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
-import { Plus, Pencil, Trash2, Link as LinkIcon, Loader2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Link as LinkIcon, Loader2, BarChart3 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 interface Client {
   id: string
@@ -216,6 +217,11 @@ export default function Admin() {
                       </div>
                     </div>
                     <div className="flex gap-1">
+                      <Link to={`/admin/client/${client.id}`}>
+                        <Button variant="outline" size="sm" className="gap-1">
+                          <BarChart3 className="h-3.5 w-3.5" /> Ver Dashboard
+                        </Button>
+                      </Link>
                       <Button variant="ghost" size="icon" onClick={() => openEditClient(client)}>
                         <Pencil className="h-4 w-4" />
                       </Button>

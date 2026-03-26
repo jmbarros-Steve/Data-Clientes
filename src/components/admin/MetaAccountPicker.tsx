@@ -118,7 +118,7 @@ export function MetaAccountPicker({ clientId, clientName, open, onOpenChange, on
     try {
       await supabase.from('meta_accounts').insert({
         client_id: clientId,
-        meta_account_id: account.id.replace('act_', ''),
+        meta_account_id: account.id.startsWith('act_') ? account.id : `act_${account.account_id}`,
         meta_account_name: account.name,
         access_token: accessToken,
       })

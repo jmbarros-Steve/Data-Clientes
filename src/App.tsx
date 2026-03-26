@@ -9,6 +9,7 @@ import MetricsGlossary from '@/pages/MetricsGlossary'
 import Admin from '@/pages/Admin'
 import AdminBudgets from '@/pages/AdminBudgets'
 import AdminGlossary from '@/pages/AdminGlossary'
+import AdminClientView from '@/pages/AdminClientView'
 import PrivacyPolicy from '@/pages/PrivacyPolicy'
 import TermsOfService from '@/pages/TermsOfService'
 import { Loader2 } from 'lucide-react'
@@ -60,6 +61,7 @@ function AppRoutes() {
       <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
       <Route path="/admin/budgets" element={<AdminRoute><AdminBudgets /></AdminRoute>} />
       <Route path="/admin/glossary" element={<AdminRoute><AdminGlossary /></AdminRoute>} />
+      <Route path="/admin/client/:clientId" element={<AdminRoute><AdminClientView /></AdminRoute>} />
       <Route path="/meta/oauth" element={<div className="flex items-center justify-center min-h-screen"><p>Autenticación completada. Puedes cerrar esta ventana.</p></div>} />
       <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/terms" element={<TermsOfService />} />
